@@ -1,0 +1,31 @@
+name: CI Python
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le code
+        uses: actions/checkout@v7.0.1
+
+      - name: Installer uv et choisir Python
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "0.12.9"
+          python-version: "3.12"
+
+      - name: Installer les dependances
+        run: uv sync --locked
+
+      - name: Executer les tests
+        run: uv run --locked pytest -v
