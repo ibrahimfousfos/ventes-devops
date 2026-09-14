@@ -15,7 +15,7 @@ class Sale(BaseModel):
     sale_id: str = Field(min_length=1, max_length=64)
     shop: Literal["paris", "lyon"]
     day: date
-    quantity: int = Field(strict=True)
+    quantity: int = Field(gt=0, strict=True)
     unit_price_cents: int = Field(ge=0, strict=True)
 
 
