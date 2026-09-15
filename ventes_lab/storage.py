@@ -36,7 +36,9 @@ class Storage:
             for sale in sales:
                 statement = insert(sales_table).values(**sale.model_dump())
                 statement = statement.on_conflict_do_nothing(index_elements=["day", "shop", "sale_id"])
-                inserted += connection.execute(statement).rowcount
+                statement = statement.returning(sales_table.c.sale_id)
+                if connection.execute(statement).scalar_one_or_none() is not None:
+                    inserted += 1
         return inserted
 
     def summary(self, day: date) -> dict:
@@ -46,4 +48,3 @@ class Storage:
 
     def close(self):
         self.engine.dispose()
-

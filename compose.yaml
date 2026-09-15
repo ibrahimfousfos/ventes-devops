@@ -1,0 +1,85 @@
+name: ventes-devops
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: ventes
+      POSTGRES_USER: ventes
+      POSTGRES_PASSWORD: ventes_demo
+    volumes:
+      - ventes-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ventes -d ventes"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  source:
+    image: ventes-devops:dev
+    command: ["/app/.venv/bin/uvicorn", "ventes_lab.demo_source:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      DEMO_MODE: ok
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  api:
+    image: ventes-devops:dev
+    environment:
+      DATABASE_URL: postgresql+psycopg://ventes:ventes_demo@db:5432/ventes
+      SOURCE_BASE_URL: http://source:8001
+      REQUEST_TIMEOUT_SECONDS: "2"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      source:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  airflow:
+    image: apache/airflow:3.3.1-python3.12
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:admin"
+      AIRFLOW__CORE__PARALLELISM: "1"
+      AIRFLOW__API__WORKERS: "1"
+      AIRFLOW__DAG_PROCESSOR__PARSING_PROCESSES: "1"
+      VENTES_API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - airflow-state:/opt/airflow
+      - ./dags:/opt/airflow/dags:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json, urllib.request;
+          health = json.load(urllib.request.urlopen('http://127.0.0.1:8080/api/v2/monitor/health', timeout=5));
+          assert all(health.get(component, {}).get('status') == 'healthy' for component in ('metadatabase', 'scheduler', 'dag_processor', 'triggerer')), health
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 60s
+
+volumes:
+  ventes-data:
+  airflow-state:
