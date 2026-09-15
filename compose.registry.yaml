@@ -1,0 +1,7 @@
+# Ce fichier complete compose.yaml pour lancer une image du registre.
+# VENTES_IMAGE doit contenir le nom et la version choisis dans PowerShell.
+services:
+  api:
+    image: ${VENTES_IMAGE:?Definir VENTES_IMAGE avec la version publiee}
+  source:
+    image: ${VENTES_IMAGE:?Definir VENTES_IMAGE avec la version publiee}
