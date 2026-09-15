@@ -9,11 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ventes-ci-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   tests:
     name: Pytest
     runs-on: ubuntu-latest
-
+    timeout-minutes: 10
     steps:
       - name: Recuperer le code
         uses: actions/checkout@v7.0.1
@@ -29,3 +33,42 @@ jobs:
 
       - name: Executer les tests
         run: uv run --locked pytest -v
+
+  image:
+    name: Image Docker
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_NAME: ghcr.io/ibrahimfousfos/ventes-devops
+    steps:
+      - name: Recuperer le code teste
+        uses: actions/checkout@v7.0.1
+
+      - name: Construire et etiqueter l'image
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${IMAGE_NAME}:sha-${GITHUB_SHA}" \
+            --tag "${IMAGE_NAME}:dev" .
+
+      - name: Se connecter au registre GitHub
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USER" --password-stdin
+
+      - name: Publier les deux tags
+        run: |
+          docker push "${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          docker push "${IMAGE_NAME}:dev"
+
+      - name: Afficher la version publiee
+        run: |
+          printf 'Image publiee : `%s:sha-%s`\n\nAlias : `%s:dev`\n' "$IMAGE_NAME" "$GITHUB_SHA" "$IMAGE_NAME" >> "$GITHUB_STEP_SUMMARY"
